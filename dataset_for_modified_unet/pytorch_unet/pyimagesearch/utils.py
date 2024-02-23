@@ -15,6 +15,7 @@ from torchsummary import summary
 import model
 from model import UNet
 import numpy as np
+from PIL import Image
 # import GradCAM
 
 import os
@@ -24,7 +25,7 @@ import warnings
 
 #Load Model
 model = model.UNet()
-# model = torch.load ( config.MODEL_PATH )
+model = torch.load ( config.PARALLEL_MODEL_PATH )
 
 outSize = \
     (config.INPUT_IMAGE_HEIGHT, config.INPUT_IMAGE_WIDTH)
@@ -96,6 +97,12 @@ def get_prediction ( model , image ):
 #     grad_cam_img = GradCAM.apply_gradcam_on_custom_model ( image )
 
 #     return grad_cam_img
+
+# org_image = Image.open ( r"dataset_for_modified_unet\pytorch_unet\dataset\train\grad_cam_images\IMD003_0.jpg")
+# image = get_prediction ( model, org_image )
+
+# cv2.imshow ( "Image" , image )
+# cv2.waitKey( 0 )
 
 # t = torch.randn (1,3,128,128)
 # decoder_input = get_decoder_features ( UNet() , t ) 

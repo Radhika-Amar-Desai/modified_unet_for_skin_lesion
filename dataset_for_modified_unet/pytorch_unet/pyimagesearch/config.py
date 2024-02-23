@@ -49,4 +49,4 @@ MODEL_PATH = os.path.join(BASE_OUTPUT, "unet_tgs_salt.pth")
 PLOT_PATH = os.path.sep.join([BASE_OUTPUT, "plot.png"])
 TEST_PATHS = os.path.sep.join([BASE_OUTPUT, "test_paths.txt"])
 PARALLEL_MODEL_PATH = \
-    "C:\\Users\\97433\\unet\\SkinLesionSegmentation\\dataset_for_unet3\\pytorch_unet\\output\\unet_tgs_salt.pth"
+    r"dataset_for_modified_unet\pytorch_unet\output\unet_tgs_salt.pth"

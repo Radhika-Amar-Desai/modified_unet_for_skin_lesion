@@ -62,10 +62,10 @@ transforms = transforms.Compose([
 	transforms.ToTensor()])
 
 train_root_dir = \
-    r"SkinLesionSegmentation\dataset_for_modified_unet\pytorch_unet\dataset\train"
+    r"dataset_for_modified_unet\pytorch_unet\dataset\train"
 
 test_root_dir = \
-    r"SkinLesionSegmentation\dataset_for_modified_unet\pytorch_unet\dataset\test"
+    r"dataset_for_modified_unet\pytorch_unet\dataset\test"
 
 trainDS = CustomSegmentationDataset ( train_root_dir , transforms )
 testDS = CustomSegmentationDataset ( test_root_dir , transforms )
