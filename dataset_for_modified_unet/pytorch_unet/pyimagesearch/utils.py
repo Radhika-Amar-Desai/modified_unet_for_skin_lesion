@@ -24,8 +24,8 @@ import warnings
 # warnings.filterwarnings("ignore", category=FutureWarning)  # Ignore FutureWarnings
 
 #Load Model
-model = model.UNet()
-model = torch.load ( config.PARALLEL_MODEL_PATH )
+# model = model.UNet()
+# model = torch.load ( config.PARALLEL_MODEL_PATH )
 
 outSize = \
     (config.INPUT_IMAGE_HEIGHT, config.INPUT_IMAGE_WIDTH)
@@ -39,7 +39,8 @@ def convert_img_to_tensor ( image = None ):
 
     image = np.array(image)
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    image = cv2.resize(image, (150, 150))
+    image = cv2.resize(image, (config.INPUT_IMAGE_HEIGHT, 
+                               config.INPUT_IMAGE_WIDTH))
     image = image.astype("float32") / 255.0
 
     image = np.transpose(image, (2, 0, 1))

@@ -11,14 +11,13 @@ import matplotlib.pyplot as plt
 import config
 from modified_unet import modified_UNet
 import time
-from model import UNet
 import numpy as np
 import cv2
 import torch
 import psutil
 
 # Enable anomaly detection
-torch.autograd.set_detect_anomaly(True)
+#torch.autograd.set_detect_anomaly(True)
 
 class CustomSegmentationDataset(Dataset):
     def __init__(self, root_dir, transform=None):
@@ -27,12 +26,20 @@ class CustomSegmentationDataset(Dataset):
 
         self.image_folder = os.path.join(root_dir, 'images')
         self.mask_folder = os.path.join(root_dir, 'labels')
-        self.grad_cam_folder = os.path.join ( root_dir, 'grad_cam_images' )
+        self.grad_cam_folder = os.path.join ( root_dir, 
+                                            'grad_cam_images' )
+        self.decoder_output_folder = \
+            os.path.join ( root_dir, 'decoder_tensors' )
 
-        self.image_list = sorted(os.listdir(self.image_folder))
-        self.mask_list = sorted(os.listdir(self.mask_folder))
-        self.grad_cam_list = sorted (os.listdir (self.grad_cam_folder))
-    
+        self.image_list = sorted(os.listdir(
+                            self.image_folder))
+        self.mask_list = sorted(os.listdir(
+                            self.mask_folder))
+        self.grad_cam_list = sorted (os.listdir (
+                            self.grad_cam_folder))
+        self.decoder_output_list = sorted ( os.listdir (
+                            self.decoder_output_folder))
+
     def __len__(self):
         return len(self.image_list)
 
@@ -44,9 +51,16 @@ class CustomSegmentationDataset(Dataset):
                                 self.mask_list[idx])
         grad_cam_path = os.path.join(self.grad_cam_folder,
                                     self.grad_cam_list[idx] )
+        decoder_output_tensors_path = \
+                        os.path.join(self.decoder_output_folder,
+                                    self.decoder_output_list[idx])
+        
         image = Image.open( img_path ).convert('RGB')
         mask = Image.open( mask_path ).convert('L')  # Assuming masks are grayscale
         grad_cam_img = Image.open ( grad_cam_path ).convert('RGB')
+        decoder_output_tensors = \
+            torch.load ( decoder_output_tensors_path )
+        
         #grad_cam_img = image
         # Apply transformations if provided
         if self.transform:
@@ -54,7 +68,12 @@ class CustomSegmentationDataset(Dataset):
             grad_cam_img = self.transform (grad_cam_img)
             mask = self.transform( mask )
 
-        return image, grad_cam_img , mask
+        decoder_output_tensors[0].requires_grad = False
+        decoder_output_tensors[1].requires_grad = False
+
+        return image, grad_cam_img , mask ,\
+                decoder_output_tensors[0][0],\
+                decoder_output_tensors[1][0]
 
 transforms = transforms.Compose([
     transforms.Resize((config.INPUT_IMAGE_HEIGHT,
@@ -67,8 +86,12 @@ train_root_dir = \
 test_root_dir = \
     r"dataset_for_modified_unet\pytorch_unet\dataset\test"
 
-trainDS = CustomSegmentationDataset ( train_root_dir , transforms )
-testDS = CustomSegmentationDataset ( test_root_dir , transforms )
+trainDS = CustomSegmentationDataset ( train_root_dir , 
+                                    transforms )
+testDS = CustomSegmentationDataset ( test_root_dir , 
+                                    transforms )
+
+#print ( trainDS[0] )
 
 trainLoader = DataLoader(trainDS, shuffle=True,
 		batch_size=config.BATCH_SIZE, pin_memory=config.PIN_MEMORY,
@@ -77,6 +100,10 @@ trainLoader = DataLoader(trainDS, shuffle=True,
 testLoader = DataLoader(testDS, shuffle=True,
 		batch_size=config.BATCH_SIZE, pin_memory=config.PIN_MEMORY,
 		num_workers=os.cpu_count(),drop_last=True)
+
+# if __name__ == "__main__":
+#     for i , a in enumerate(trainLoader):
+#         print ( len(a) )
 
 unet = modified_UNet()
 #unet = UNet()
@@ -107,41 +134,54 @@ if __name__ == "__main__":
         totalTrainLoss = 0
         totalTestLoss = 0
         # loop over the training set
-        for (i,(x1,x2,y)) in enumerate(trainLoader):
+        for (i,(x1,x2,y,t1,t2)) in enumerate(trainLoader):
             # send the input to the device
-            #print ( x1.shape, x2.shape, y.shape )
-            (x1,x2, y) = (x1.to(config.DEVICE),
+            #print ( x1.shape, x2.shape, y.shape,
+                #t1.shape, t2.shape)
+            (x1, x2, y, t1, t2) = \
+                        (x1.to(config.DEVICE),
                         x2.to(config.DEVICE),
-                        y.to(config.DEVICE))
+                        y.to(config.DEVICE),
+                        t1.to(config.DEVICE),
+                        t2.to(config.DEVICE))
+            
+            #print ( x1.shape, x2.shape, y.shape )
             # perform a forward pass and calculate the training loss
-            pred = unet(x = x1, grad_cam_tensor_x = x2)
+            pred = unet(x = x1, grad_cam_tensor_x = x2,
+                        decoder_output1 = t1,
+                        decoder_output2 = t2)
             #pred = unet( x1 )
             loss = lossFunc(pred, y)
             print ( i )
             # first, zero out any previously accumulated gradients, then
             # perform backpropagation, and then update model parameters
             opt.zero_grad()
-            loss.backward(retain_graph=True)
+            loss.backward(retain_graph = True)
             #clip_grad_norm_(value_model.parameters(), clip_grad_norm)
             # loss.backward()
             opt.step()
-            # loss.detach()
+            loss.detach()
             # add the loss to the total training loss so far
             totalTrainLoss += loss
-            
+        torch.cuda.empty_cache()
         # switch off autograd
         with torch.no_grad():
             # set the model in evaluation mode
             unet.eval()
             # loop over the validation set
-            for index,(x1, x2 , y) in enumerate(testLoader):
+            for index,(x1, x2 , y, t1, t2) in enumerate(testLoader):
                 # send the input to the device
-                (x1, x2 , y) = (x1.to(config.DEVICE), 
+                (x1, x2 , y, t1, t2) = (\
+                        x1.to(config.DEVICE), 
                         x2.to(config.DEVICE),
-                        y.to(config.DEVICE))
+                        y.to(config.DEVICE),
+                        t1.to(config.DEVICE),
+                        t2.to(config.DEVICE))
                 # make the predictions and calculate the validation loss
                 #print ( "x1.shape : ", x1.shape, "x2.shape : ", x2.shape, "y.shape : ", y )
-                pred = unet(x = x1, grad_cam_tensor_x = x2)
+                pred = unet(x = x1, grad_cam_tensor_x = x2,
+                            decoder_output1 = t1,
+                            decoder_output2 = t2)
                 #pred = unet(x1)
                 totalTestLoss += lossFunc(pred, y)
                 #print ( index )

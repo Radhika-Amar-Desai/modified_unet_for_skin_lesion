@@ -9,9 +9,9 @@ from torch.nn import ReLU
 from torchvision.transforms import CenterCrop
 from torch.nn import functional as F
 import torch
-from torchsummary import summary
-from utils import get_decoder_features
-from model import UNet
+#from torchsummary import summary
+#from utils import get_decoder_features
+#from model import UNet
 
 class Block(Module):
 	def __init__(self, inChannels, outChannels):
@@ -57,9 +57,12 @@ class Decoder(Module):
 		self.dec_blocks = ModuleList(
 			[Block(int(channels[i] * 3/2), channels[i + 1])
 			 	for i in range(len(channels) - 1)])
-	def forward(self, x, grad_cam_x, encFeatures):
+	def forward(self, x, grad_cam_x, 
+				decoder_output1,decoder_output2,
+				encFeatures):
 		# loop through the number of channels
-		decoder_features = get_decoder_features(UNet(), grad_cam_x)
+		#decoder_features = get_decoder_features(UNet(), grad_cam_x)
+		decoder_output = [ decoder_output1, decoder_output2 ]
 		for i in range(len(self.channels) - 1):
 			# pass the inputs through the upsampler blocks
 			x = self.upconvs[i](x)
@@ -72,7 +75,7 @@ class Decoder(Module):
 			encFeat = self.crop( encFeatures[i], x )
 			x = torch.cat([x, encFeat], dim=1)
 			#print ( "Decoder-encoder  : ", x.shape )
-			grad_cam_x = decoder_features[i]
+			grad_cam_x = decoder_output[i]
 			x = self.crop( x, grad_cam_x )
 			#print ( "x.shape" , x.shape )
 			#print ( "grad_cam_x.shape", grad_cam_x.shape )
@@ -88,6 +91,7 @@ class Decoder(Module):
 		# features to match the dimensions
 		# print ( "encFeatures.shape : ", encFeatures.shape )
 		# print ( "x.shape : ", x.shape )
+		#print ( "x.shape : " , x.shape )
 		(_, _, H, W) = x.shape
 		encFeatures = CenterCrop([H, W])(encFeatures)
 		# return the cropped features
@@ -97,7 +101,7 @@ class modified_UNet(Module):
 	def __init__(self, encChannels=(3, 16, 32, 64),
 		 decChannels=(64, 32, 16),
 		 nbClasses=1, retainDim=True,
-		 outSize=(config.INPUT_IMAGE_HEIGHT,  config.INPUT_IMAGE_WIDTH)):
+		 outSize=(config.INPUT_IMAGE_HEIGHT, config.INPUT_IMAGE_WIDTH)):
 		super().__init__()
 		# initialize the encoder and decoder
 		self.encoder = Encoder(encChannels)
@@ -107,7 +111,8 @@ class modified_UNet(Module):
 		self.retainDim = retainDim
 		self.outSize = outSize
 
-	def forward(self, x, grad_cam_tensor_x):
+	def forward(self, x, grad_cam_tensor_x, 
+			decoder_output1, decoder_output2):
 			# grab the features from the encoder
 			encFeatures = self.encoder(x)
 			# pass the encoder features through decoder making sure that
@@ -115,6 +120,8 @@ class modified_UNet(Module):
 			decFeatures = self.decoder(
 				x = encFeatures[::-1][0], 
 				grad_cam_x = grad_cam_tensor_x,
+				decoder_output1 = decoder_output1,
+				decoder_output2 = decoder_output2,
 				encFeatures = encFeatures[::-1][1:])
 			# pass the decoder features through the regression head to
 			# obtain the segmentation mask
@@ -126,10 +133,15 @@ class modified_UNet(Module):
 			# return the segmentation map
 			return map
 
-# model_for_seg = modified_unet()
-# t = torch.randn ( 1, 3, 128, 128)
-# grad_cam_t = torch.randn ( 1, 3, 128, 128 )
-# print ( model_for_seg ( t, grad_cam_t ) )
+model_for_seg = modified_UNet()
+t = torch.randn ( 1, 3, 128, 128)
+grad_cam_t = torch.randn ( 1, 3, 128, 128 )
+
+t1 = torch.randn ( 1, 32, 56, 56 )
+t2 = torch.randn ( 1, 16, 108, 108 )
+
+decoder_output = [ t1 , t2 ]
+# print ( model_for_seg ( t, grad_cam_t, t1, t2 ) )
 
 # ----------------------------------------------------------------
 #         Layer (type)               Output Shape         Param #

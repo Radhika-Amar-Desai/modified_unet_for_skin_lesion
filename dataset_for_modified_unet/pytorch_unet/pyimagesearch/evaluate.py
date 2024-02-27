@@ -18,12 +18,20 @@ class CustomSegmentationDataset(Dataset):
 
         self.image_folder = os.path.join(root_dir, 'images')
         self.mask_folder = os.path.join(root_dir, 'labels')
-        self.grad_cam_folder = os.path.join ( root_dir, 'grad_cam_images' )
+        self.grad_cam_folder = os.path.join ( root_dir, 
+                                            'grad_cam_images' )
+        self.decoder_output_folder = \
+            os.path.join ( root_dir, 'decoder_tensors' )
 
-        self.image_list = sorted(os.listdir(self.image_folder))
-        self.mask_list = sorted(os.listdir(self.mask_folder))
-        self.grad_cam_list = sorted (os.listdir (self.grad_cam_folder))
-    
+        self.image_list = sorted(os.listdir(
+                            self.image_folder))
+        self.mask_list = sorted(os.listdir(
+                            self.mask_folder))
+        self.grad_cam_list = sorted (os.listdir (
+                            self.grad_cam_folder))
+        self.decoder_output_list = sorted ( os.listdir (
+                            self.decoder_output_folder))
+
     def __len__(self):
         return len(self.image_list)
 
@@ -35,9 +43,16 @@ class CustomSegmentationDataset(Dataset):
                                 self.mask_list[idx])
         grad_cam_path = os.path.join(self.grad_cam_folder,
                                     self.grad_cam_list[idx] )
+        decoder_output_tensors_path = \
+                        os.path.join(self.decoder_output_folder,
+                                    self.decoder_output_list[idx])
+        
         image = Image.open( img_path ).convert('RGB')
         mask = Image.open( mask_path ).convert('L')  # Assuming masks are grayscale
         grad_cam_img = Image.open ( grad_cam_path ).convert('RGB')
+        decoder_output_tensors = \
+            torch.load ( decoder_output_tensors_path )
+        
         #grad_cam_img = image
         # Apply transformations if provided
         if self.transform:
@@ -45,7 +60,12 @@ class CustomSegmentationDataset(Dataset):
             grad_cam_img = self.transform (grad_cam_img)
             mask = self.transform( mask )
 
-        return image, grad_cam_img , mask
+        decoder_output_tensors[0].requires_grad = False
+        decoder_output_tensors[1].requires_grad = False
+
+        return image, grad_cam_img , mask ,\
+                decoder_output_tensors[0][0],\
+                decoder_output_tensors[1][0]
 
 if __name__ == "__main__":
 
@@ -90,7 +110,8 @@ if __name__ == "__main__":
     with torch.no_grad():
         for entry in validation_loader:
             # Assuming your model outputs segmentation masks
-            outputs = unet( entry[0], entry[1])
+            outputs = unet( entry[0], entry[1], 
+                           entry[3], entry[4])
 
             # Convert logits to binary masks using a threshold or softmax
             pred_masks = (torch.sigmoid(outputs) > 0.5).float()
