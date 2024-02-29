@@ -11,9 +11,8 @@ import torchvision.transforms as transforms
 import cv2
 from torch.nn import functional as F
 import torch
-from torchsummary import summary
+#from torchsummary import summary
 import model
-from model import UNet
 import numpy as np
 from PIL import Image
 # import GradCAM
@@ -24,8 +23,8 @@ import warnings
 # warnings.filterwarnings("ignore", category=FutureWarning)  # Ignore FutureWarnings
 
 #Load Model
-# model = model.UNet()
-# model = torch.load ( config.PARALLEL_MODEL_PATH )
+model = model.UNet()
+model = torch.load ( config.PARALLEL_MODEL_PATH )
 
 outSize = \
     (config.INPUT_IMAGE_HEIGHT, config.INPUT_IMAGE_WIDTH)

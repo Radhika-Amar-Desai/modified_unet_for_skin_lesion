@@ -71,16 +71,16 @@ def folder_rotate_and_save_image ( image_folder : str ):
             os.path.join ( image_folder, image_file )
         rotate_and_save_image ( image_file_path )
 
-folder_rotate_and_save_image ( r"dataset_for_modified_unet\pytorch_unet\dataset\train\labels" )
+#folder_rotate_and_save_image ( r"dataset_for_modified_unet\pytorch_unet\dataset\train\labels" )
 
-# image_folder = \
-#     r"dataset_for_modified_unet\pytorch_unet\dataset\test\grad_cam_images"
-# tensor_folder = \
-#     r"dataset_for_modified_unet\pytorch_unet\dataset\test\decoder_tensors"
+image_folder = \
+    "dataset_for_modified_unet/pytorch_unet/dataset/train/grad_cam_images"
+tensor_folder = \
+    "dataset_for_modified_unet/pytorch_unet/dataset/train/decoder_tensors"
 
-# folder_save_decoder_outputs_from_parallel_model ( 
-#     image_folder = image_folder,
-#     tensor_folder = tensor_folder)
+folder_save_decoder_outputs_from_parallel_model ( 
+    image_folder = image_folder,
+    tensor_folder = tensor_folder)
 
 # tensor_file = \
 #     r"dataset_for_modified_unet\pytorch_unet\dataset\train\decoder_tensors\IMD003_0.pt"

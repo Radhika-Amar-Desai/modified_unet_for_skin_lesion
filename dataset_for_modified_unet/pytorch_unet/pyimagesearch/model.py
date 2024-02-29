@@ -9,7 +9,7 @@ from torch.nn import ReLU
 from torchvision.transforms import CenterCrop
 from torch.nn import functional as F
 import torch
-from torchsummary import summary
+#from torchsummary import summary
 
 class Block(Module):
 	def __init__(self, inChannels, outChannels):

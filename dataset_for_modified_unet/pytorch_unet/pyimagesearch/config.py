@@ -1,7 +1,6 @@
 # import the necessary packages
 import torch
 import os
-import torch
 # base path of the dataset
 DATASET_PATH = \
     r'SkinLesionSegmentation\dataset_for_unet3\train'    
