@@ -9,9 +9,30 @@ from torch.nn import ReLU
 from torchvision.transforms import CenterCrop
 from torch.nn import functional as F
 import torch
-#from torchsummary import summary
-#from utils import get_decoder_features
-#from model import UNet
+from torchsummary import summary
+from utils import get_decoder_features
+from model import UNet
+from PIL import Image
+import os
+from PIL import Image
+import torch
+from torch.utils.data import Dataset
+from torch.nn import BCEWithLogitsLoss
+from torch.optim import Adam
+from torchvision import transforms
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+import matplotlib.pyplot as plt
+import config
+import time
+from model import UNet
+import numpy as np
+import cv2
+import torch
+import psutil
+
+model = UNet()
+model = torch.load ( config.PARALLEL_MODEL_PATH )
 
 class Block(Module):
 	def __init__(self, inChannels, outChannels):
@@ -57,12 +78,10 @@ class Decoder(Module):
 		self.dec_blocks = ModuleList(
 			[Block(int(channels[i] * 3/2), channels[i + 1])
 			 	for i in range(len(channels) - 1)])
-	def forward(self, x, grad_cam_x, 
-				decoder_output1,decoder_output2,
-				encFeatures):
+	def forward(self, x, grad_cam_x, encFeatures):
 		# loop through the number of channels
-		#decoder_features = get_decoder_features(UNet(), grad_cam_x)
-		decoder_output = [ decoder_output1, decoder_output2 ]
+		decoder_features = get_decoder_features(model, 
+										grad_cam_x)
 		for i in range(len(self.channels) - 1):
 			# pass the inputs through the upsampler blocks
 			x = self.upconvs[i](x)
@@ -75,7 +94,7 @@ class Decoder(Module):
 			encFeat = self.crop( encFeatures[i], x )
 			x = torch.cat([x, encFeat], dim=1)
 			#print ( "Decoder-encoder  : ", x.shape )
-			grad_cam_x = decoder_output[i]
+			grad_cam_x = decoder_features[i]
 			x = self.crop( x, grad_cam_x )
 			#print ( "x.shape" , x.shape )
 			#print ( "grad_cam_x.shape", grad_cam_x.shape )
@@ -91,7 +110,6 @@ class Decoder(Module):
 		# features to match the dimensions
 		# print ( "encFeatures.shape : ", encFeatures.shape )
 		# print ( "x.shape : ", x.shape )
-		#print ( "x.shape : " , x.shape )
 		(_, _, H, W) = x.shape
 		encFeatures = CenterCrop([H, W])(encFeatures)
 		# return the cropped features
@@ -101,7 +119,7 @@ class modified_UNet(Module):
 	def __init__(self, encChannels=(3, 16, 32, 64),
 		 decChannels=(64, 32, 16),
 		 nbClasses=1, retainDim=True,
-		 outSize=(config.INPUT_IMAGE_HEIGHT, config.INPUT_IMAGE_WIDTH)):
+		 outSize=(config.INPUT_IMAGE_HEIGHT,  config.INPUT_IMAGE_WIDTH)):
 		super().__init__()
 		# initialize the encoder and decoder
 		self.encoder = Encoder(encChannels)
@@ -111,8 +129,7 @@ class modified_UNet(Module):
 		self.retainDim = retainDim
 		self.outSize = outSize
 
-	def forward(self, x, grad_cam_tensor_x, 
-			decoder_output1, decoder_output2):
+	def forward(self, x, grad_cam_tensor_x):
 			# grab the features from the encoder
 			encFeatures = self.encoder(x)
 			# pass the encoder features through decoder making sure that
@@ -120,8 +137,6 @@ class modified_UNet(Module):
 			decFeatures = self.decoder(
 				x = encFeatures[::-1][0], 
 				grad_cam_x = grad_cam_tensor_x,
-				decoder_output1 = decoder_output1,
-				decoder_output2 = decoder_output2,
 				encFeatures = encFeatures[::-1][1:])
 			# pass the decoder features through the regression head to
 			# obtain the segmentation mask
@@ -133,54 +148,158 @@ class modified_UNet(Module):
 			# return the segmentation map
 			return map
 
-model_for_seg = modified_UNet()
-t = torch.randn ( 1, 3, 128, 128)
-grad_cam_t = torch.randn ( 1, 3, 128, 128 )
+class CustomSegmentationDataset(Dataset):
+    def __init__(self, root_dir, transform=None):
+        self.root_dir = root_dir
+        self.transform = transform
 
-t1 = torch.randn ( 1, 32, 56, 56 )
-t2 = torch.randn ( 1, 16, 108, 108 )
+        self.image_folder = os.path.join(root_dir, 'images')
+        self.mask_folder = os.path.join(root_dir, 'labels')
+        self.grad_cam_folder = os.path.join ( root_dir, 'grad_cam_images' )
 
-decoder_output = [ t1 , t2 ]
-# print ( model_for_seg ( t, grad_cam_t, t1, t2 ) )
+        self.image_list = sorted(os.listdir(self.image_folder))
+        self.mask_list = sorted(os.listdir(self.mask_folder))
+        self.grad_cam_list = sorted (os.listdir (self.grad_cam_folder))
+    
+    def __len__(self):
+        return len(self.image_list)
 
-# ----------------------------------------------------------------
-#         Layer (type)               Output Shape         Param #
-# ================================================================
-#             Conv2d-1         [-1, 16, 126, 126]             448
-#               ReLU-2         [-1, 16, 126, 126]               0
-#             Conv2d-3         [-1, 16, 124, 124]           2,320
-#              Block-4         [-1, 16, 124, 124]               0
-#          MaxPool2d-5           [-1, 16, 62, 62]               0
-#             Conv2d-6           [-1, 32, 60, 60]           4,640
-#               ReLU-7           [-1, 32, 60, 60]               0
-#             Conv2d-8           [-1, 32, 58, 58]           9,248
-#              Block-9           [-1, 32, 58, 58]               0
-#         MaxPool2d-10           [-1, 32, 29, 29]               0
-#            Conv2d-11           [-1, 64, 27, 27]          18,496
-#              ReLU-12           [-1, 64, 27, 27]               0
-#            Conv2d-13           [-1, 64, 25, 25]          36,928
-#             Block-14           [-1, 64, 25, 25]               0
-#         MaxPool2d-15           [-1, 64, 12, 12]               0
-#           Encoder-16  [[-1, 16, 124, 124], [-1, 32, 58, 58], [-1, 64, 25, 25]]               0
-#   ConvTranspose2d-17           [-1, 32, 50, 50]           8,224
-#            Conv2d-18           [-1, 32, 48, 48]          18,464
-#              ReLU-19           [-1, 32, 48, 48]               0
-#            Conv2d-20           [-1, 32, 46, 46]           9,248
-#             Block-21           [-1, 32, 46, 46]               0
-#   ConvTranspose2d-22           [-1, 16, 92, 92]           2,064
-#            Conv2d-23           [-1, 16, 90, 90]           4,624
-#              ReLU-24           [-1, 16, 90, 90]               0
-#            Conv2d-25           [-1, 16, 88, 88]           2,320
-#             Block-26           [-1, 16, 88, 88]               0
-#           Decoder-27           [-1, 16, 88, 88]               0
-#            Conv2d-28            [-1, 1, 88, 88]              17
-# ================================================================
-# Total params: 117,041
-# Trainable params: 117,041
-# Non-trainable params: 0
-# ----------------------------------------------------------------
-# Input size (MB): 0.19
-# Forward/backward pass size (MB): 12197.77
-# Params size (MB): 0.45
-# Estimated Total Size (MB): 12198.41
-# ----------------------------------------------------------------
+    def __getitem__(self, idx):
+        # Load image and mask
+        img_path = os.path.join(self.image_folder, 
+                                self.image_list[idx])
+        mask_path = os.path.join(self.mask_folder, 
+                                self.mask_list[idx])
+        grad_cam_path = os.path.join(self.grad_cam_folder,
+                                    self.grad_cam_list[idx] )
+        image = Image.open( img_path ).convert('RGB')
+        mask = Image.open( mask_path ).convert('L')  # Assuming masks are grayscale
+        grad_cam_img = Image.open ( grad_cam_path ).convert('RGB')
+        #grad_cam_img = image
+        # Apply transformations if provided
+        if self.transform:
+            image = self.transform( image )
+            grad_cam_img = self.transform (grad_cam_img)
+            mask = self.transform( mask )
+
+        return image, grad_cam_img , mask
+
+transforms = transforms.Compose([
+    transforms.Resize((config.INPUT_IMAGE_HEIGHT,
+		            config.INPUT_IMAGE_WIDTH)),
+	transforms.ToTensor()])
+
+train_root_dir = \
+    r"dataset_for_modified_unet\pytorch_unet\dataset\train"
+
+test_root_dir = \
+    r"dataset_for_modified_unet\pytorch_unet\dataset\test"
+
+trainDS = CustomSegmentationDataset ( train_root_dir , transforms )
+testDS = CustomSegmentationDataset ( test_root_dir , transforms )
+
+trainLoader = DataLoader(trainDS, shuffle=True,
+		batch_size=config.BATCH_SIZE, pin_memory=config.PIN_MEMORY,
+		num_workers=os.cpu_count(), drop_last=True)
+
+testLoader = DataLoader(testDS, shuffle=True,
+		batch_size=config.BATCH_SIZE, pin_memory=config.PIN_MEMORY,
+		num_workers=os.cpu_count(),drop_last=True)
+
+unet = modified_UNet()
+
+lossFunc = BCEWithLogitsLoss()
+opt = Adam(unet.parameters(), lr=config.INIT_LR)
+
+trainSteps = len(trainDS) // config.BATCH_SIZE
+testSteps = len(testDS) // config.BATCH_SIZE
+
+if __name__ == "__main__":
+    H = {"train_loss": [], "test_loss": []}
+    print("[INFO] training the network...")
+    startTime = time.time()
+
+    for e in tqdm(range(config.NUM_EPOCHS)):
+        # Get CPU usage
+        cpu_usage = psutil.cpu_percent()
+        print("CPU Usage: {}%".format(cpu_usage))
+
+        # Get memory usage
+        memory_usage = psutil.virtual_memory().percent
+        print("Memory Usage: {}%".format(memory_usage))
+        print("Epoch : ", e)
+        # set the model in training mode
+        unet.train()
+        # initialize the total training and validation loss
+        totalTrainLoss = 0
+        totalTestLoss = 0
+        # loop over the training set
+        for (i,(x1,x2,y)) in enumerate(trainLoader):
+            # send the input to the device
+            #print ( x1.shape, x2.shape, y.shape )
+            (x1,x2, y) = (x1.to(config.DEVICE),
+                        x2.to(config.DEVICE),
+                        y.to(config.DEVICE))
+            # perform a forward pass and calculate the training loss
+            pred = unet(x = x1, grad_cam_tensor_x = x2)
+            #pred = unet( x1 )
+            loss = lossFunc(pred, y)
+            print ( i )
+            # first, zero out any previously accumulated gradients, then
+            # perform backpropagation, and then update model parameters
+            opt.zero_grad()
+            loss.backward(retain_graph=True)
+            #clip_grad_norm_(value_model.parameters(), clip_grad_norm)
+            # loss.backward()
+            opt.step()
+            loss.detach()
+            # add the loss to the total training loss so far
+            totalTrainLoss += loss
+            
+        # switch off autograd
+        with torch.no_grad():
+            # set the model in evaluation mode
+            unet.eval()
+            # loop over the validation set
+            for index,(x1, x2 , y) in enumerate(testLoader):
+                # send the input to the device
+                (x1, x2 , y) = (x1.to(config.DEVICE), 
+                        x2.to(config.DEVICE),
+                        y.to(config.DEVICE))
+                # make the predictions and calculate the validation loss
+                #print ( "x1.shape : ", x1.shape, "x2.shape : ", x2.shape, "y.shape : ", y )
+                pred = unet(x = x1, grad_cam_tensor_x = x2)
+                #pred = unet(x1)
+                totalTestLoss += lossFunc(pred, y)
+                #print ( index )
+        # calculate the average training and validation loss
+        avgTrainLoss = totalTrainLoss / trainSteps
+        avgTestLoss = totalTestLoss / testSteps
+        # update our training history
+        H["train_loss"].append(avgTrainLoss.cpu().detach().numpy())
+        H["test_loss"].append(avgTestLoss.cpu().detach().numpy())
+        # print the model training and validation information
+        print("[INFO] EPOCH: {}/{}".format(e + 1, config.NUM_EPOCHS))
+        print("Train loss: {:.6f}, Test loss: {:.4f}".format(
+            avgTrainLoss, avgTestLoss))
+    # display the total time needed to perform the training
+    endTime = time.time()
+    print("[INFO] total time taken to train the model: {:.2f}s".format(
+        endTime - startTime))
+    # plot the training loss
+    plt.style.use("ggplot")
+    plt.figure()
+    plt.plot(H["train_loss"], label="train_loss")
+    plt.plot(H["test_loss"], label="test_loss")
+    plt.title("Training Loss")
+    plt.xlabel("Epoch #")
+    plt.ylabel("Loss")
+    plt.legend(loc="lower left")
+    plt.savefig(config.PLOT_PATH)
+    # serialize the model to disk
+    torch.save(unet, config.MODEL_PATH)
+
+# model_for_seg = modified_unet()
+# t = torch.randn ( 1, 3, 128, 128)
+# grad_cam_t = torch.randn ( 1, 3, 128, 128 )
+# print ( model_for_seg ( t, grad_cam_t ) )
