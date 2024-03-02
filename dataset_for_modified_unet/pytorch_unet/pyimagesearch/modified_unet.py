@@ -10,7 +10,7 @@ from torchvision.transforms import CenterCrop
 from torch.nn import functional as F
 import torch
 from torchsummary import summary
-from utils import get_decoder_features
+#from utils import get_decoder_features
 from model import UNet
 from PIL import Image
 import os
@@ -38,10 +38,10 @@ model = torch.load ( config.PARALLEL_MODEL_PATH )
 enc_output = []
 dec_output = []
 
-def get_decoder_features ( unet_model , x ):
+def get_decoder_features ( x ):
 
-    encoder = unet_model.encoder
-    decoder = unet_model.decoder
+    encoder = model.encoder
+    decoder = model.decoder
 
     #Encoder ( including bottleneck )
     for idx , enc_block in enumerate ( encoder.encBlocks ):
@@ -247,8 +247,8 @@ testLoader = DataLoader(testDS, shuffle=True,
 		num_workers=os.cpu_count(),drop_last=True)
 
 unet = modified_UNet()
-t = torch.randn(1,3,128,128)
-unet( t , t )
+# t = torch.randn(1,3,128,128)
+# unet( t , t )
 
 lossFunc = BCEWithLogitsLoss()
 opt = Adam(unet.parameters(), lr=config.INIT_LR)
