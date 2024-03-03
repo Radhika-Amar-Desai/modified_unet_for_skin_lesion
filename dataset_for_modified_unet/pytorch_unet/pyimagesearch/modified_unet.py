@@ -30,8 +30,9 @@ import numpy as np
 import cv2
 import torch
 import psutil
+import gc
 
-print("modified_unet import successful")
+#print("modified_unet import successful")
 model = UNet()
 model = torch.load ( config.PARALLEL_MODEL_PATH )
 
@@ -64,7 +65,6 @@ def get_decoder_features ( x ):
         encFeat = decoder.crop ( enc_features[ idx ] , x1 )
         x2 = torch.cat ( [ x1 , encFeat ] , dim = 1 )
         x3 = dec_block ( x2 )
-        x3.detach().requires_grad = False
         dec_output.append ( x3 )
         x = x3
 
@@ -129,7 +129,9 @@ class decoder(Module):
 				x = torch.cat([x, encFeat], dim=1)
 				#print ( "Decoder-encoder  : ", x.shape )
 				grad_cam_x = decoder_features[i]
-				#x = self.crop( x, grad_cam_x )
+				grad_cam_x = grad_cam_x.cpu().detach()
+				grad_cam_x.requires_grad = False
+                #x = self.crop( x, grad_cam_x )
 				#print ( "x.shape" , x.shape )
 				#print ( "grad_cam_x.shape", grad_cam_x.shape )
 				#x = torch.cat([x, grad_cam_x], dim=1)
@@ -138,10 +140,9 @@ class decoder(Module):
 				x = self.crop( x, grad_cam_x )
 				x = torch.cat([x, grad_cam_x], dim=1)
 				#print ( "Decoder block output : ", x.shape )
-			
 			#return the final decoder output
 			return x
-		
+
 		def crop(self, encFeatures, x):
 			#grab the dimensions of the inputs, and crop the encoder
 			#features to match the dimensions
@@ -162,7 +163,8 @@ class modified_UNet(Module):
 			self.Encoder = encoder(encChannels)
 			self.Decoder = decoder(decChannels)
 			#initialize the regression head and store the class variables
-			self.head = Conv2d(decChannels[-2], nbClasses, 1)
+			self.head = Conv2d(decChannels[-2], 
+					        nbClasses, 1)
 			self.retainDim = retainDim
 			self.outSize = outSize
 
@@ -246,7 +248,7 @@ testLoader = DataLoader(testDS, shuffle=True,
 		batch_size=config.BATCH_SIZE, pin_memory=config.PIN_MEMORY,
 		num_workers=os.cpu_count(),drop_last=True)
 
-unet = modified_UNet()
+unet = modified_UNet().to(config.DEVICE)
 # t = torch.randn(1,3,128,128)
 # unet( t , t )
 
@@ -290,12 +292,15 @@ if __name__ == "__main__":
             # first, zero out any previously accumulated gradients, then
             # perform backpropagation, and then update model parameters
             opt.zero_grad()
-            loss.backward(retain_graph = True)
+            loss.backward()
             opt.step()
-            loss.cpu().detach()
+            loss.cpu().detach().numpy()
             # add the loss to the total training loss so far
             totalTrainLoss += loss
-            
+        # # Clear cache
+        del x1, x2, y, pred, loss
+        gc.collect()
+		
         # switch off autograd
         with torch.no_grad():
             # set the model in evaluation mode
@@ -309,9 +314,13 @@ if __name__ == "__main__":
                 # make the predictions and calculate the validation loss
                 #print ( "x1.shape : ", x1.shape, "x2.shape : ", x2.shape, "y.shape : ", y )
                 pred = unet(x = x1, grad_cam_tensor_x = x2)
-                #pred = unet(x1)
-                totalTestLoss += lossFunc(pred, y)
+                test_loss = lossFunc(pred, y)
+                totalTestLoss += test_loss
+                test_loss.cpu().detach().numpy()
                 #print ( index )
+            del x1 , x2, y, pred, test_loss
+            gc.collect()
+			
         # calculate the average training and validation loss
         avgTrainLoss = totalTrainLoss / trainSteps
         avgTestLoss = totalTestLoss / testSteps
