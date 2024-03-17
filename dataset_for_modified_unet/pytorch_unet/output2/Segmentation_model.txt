@@ -1,0 +1,26 @@
+--------------------------------------
+--------------------------------------
+    Segmentation Model Experiments    
+--------------------------------------
+--------------------------------------
+
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+Experiment-1 Unet With Gradcam Images
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+    Average IoU: 0.5681
+    Average Dice Coefficient: 0.7143
+
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+Experiment-2 Unet With orginal images 
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+    Average IoU: 0.6228
+    Average Dice Coefficient: 0.7614
+
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+Experiment-3 Modified Decoder to decoder Unet architecture
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+    Average IoU: 0.8152
+    Average Dice Coefficient: 0.9290
